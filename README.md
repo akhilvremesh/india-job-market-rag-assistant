@@ -37,3 +37,14 @@ data has no full job descriptions or company names, and its Key Skills field
 includes business and role-related tags as well as technical skills.
 
 See [data_sources.md](docs/data_sources.md) for the source and data limitations.
+
+## Data cleaning
+
+The cleaning pipeline trims extra spaces, removes duplicate job IDs,
+removes rows without a job title, standardizes location names, and parses
+salary values into lakhs per annum (LPA).
+
+To rebuild the cleaned jobs table, run this command from the project root:
+
+```powershell
+python -m src.cleaning_pipeline
