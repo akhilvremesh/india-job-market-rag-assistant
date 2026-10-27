@@ -48,3 +48,19 @@ To rebuild the cleaned jobs table, run this command from the project root:
 
 ```powershell
 python -m src.cleaning_pipeline
+
+
+## Skill extraction
+
+The project creates two skill tables from the cleaned job postings:
+
+- `job_skills_normalized` splits the source `Key Skills` field and standardizes
+  selected aliases, such as `JS` to `javascript`.
+- `job_technical_skills` uses a curated spaCy PhraseMatcher to identify
+  selected technical skills, including skills inside entries such as
+  `Core Java` and `SQL Server`.
+
+The current technical-skill table contains 15,267 job-skill rows across
+7,596 postings and 26 recognized skill names. It only includes skills in the
+curated matcher list, so a posting missing from this table may still mention
+other technical skills.
