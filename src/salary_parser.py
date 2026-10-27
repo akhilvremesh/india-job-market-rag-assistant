@@ -6,15 +6,35 @@ def parse_salary_lpa(value):
     if value is None:
         return None
 
-    text = str(value).strip().lower()
+    text = str(value).strip().casefold()
 
     if not text:
         return None
 
-    # Remove commas so "3,00,000" becomes "300000"
-    text = text.replace(",", "")
+    # Detect explicit salary units or periods
+    is_lpa = bool(re.search(r"\b(?:lpa|lac|lakh|lakhs)\b", text))
 
-    # Find salary numbers, including decimals such as "6.5"
+    is_monthly = (
+        "per month" in text
+        or "monthly" in text
+        or "p.m" in text
+        or bool(re.search(r"\bpm\b", text))
+    )
+
+    is_annual = (
+        "per annum" in text
+        or "per year" in text
+        or "annual" in text
+        or "yearly" in text
+        or "p.a" in text
+        or bool(re.search(r"\bpa\b", text))
+    )
+
+    # Bare numbers or currency alone are too ambiguous to interpret safely
+    if not (is_lpa or is_monthly or is_annual):
+        return None
+
+    text = text.replace(",", "")
     numbers = re.findall(r"\d+(?:\.\d+)?", text)
 
     if not numbers:
@@ -22,16 +42,9 @@ def parse_salary_lpa(value):
 
     amounts = [float(number) for number in numbers[:2]]
 
-    # Convert monthly rupees to annual LPA
-    is_monthly = "per month" in text or "p.m" in text or "pm" in text
-
-    # LPA/lakh amounts are already in lakhs
-    is_lpa = any(word in text for word in ["lpa", "lakh", "lac"])
-
     if is_monthly:
         amounts = [amount * 12 / 100_000 for amount in amounts]
     elif not is_lpa:
-        # Other numeric salary amounts are treated as annual rupees
         amounts = [amount / 100_000 for amount in amounts]
 
     minimum = min(amounts)
@@ -39,4 +52,3 @@ def parse_salary_lpa(value):
     midpoint = (minimum + maximum) / 2
 
     return minimum, maximum, midpoint
-    

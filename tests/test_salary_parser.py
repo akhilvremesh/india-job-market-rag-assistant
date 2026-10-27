@@ -15,3 +15,20 @@ def test_parses_annual_rupees():
 
 def test_undisclosed_salary_returns_none():
     assert parse_salary_lpa("Not Disclosed by Recruiter") is None
+
+def test_location_and_phone_text_is_not_treated_as_salary():
+    value = "Chennai, Salem, Vellore. Whatsapp 9876543210"
+    assert parse_salary_lpa(value) is None
+
+
+def test_ambiguous_pay_band_is_not_treated_as_annual_salary():
+    value = "INR Pay Band 3 (Rs.15600-39100) with AGP"
+    assert parse_salary_lpa(value) is None
+
+
+def test_converts_explicit_monthly_salary_to_annual_lpa():
+    assert parse_salary_lpa("INR 50,000 - 1,00,000 P.M.") == (
+        6.0,
+        12.0,
+        9.0,
+    )
