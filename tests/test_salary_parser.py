@@ -32,3 +32,35 @@ def test_converts_explicit_monthly_salary_to_annual_lpa():
         12.0,
         9.0,
     )
+
+def test_parses_crore_salary():
+    assert parse_salary_lpa("INR 1 Cr & above PA.") == (
+        100.0,
+        100.0,
+        100.0,
+    )
+
+
+def test_parses_monthly_salary_in_thousands():
+    assert parse_salary_lpa("12k to 15k CTC per month") == (
+        1.44,
+        1.8,
+        1.62,
+    )
+
+
+def test_parses_lakh_abbreviation():
+    assert parse_salary_lpa("Salary up to 2.5 Lcs PA") == (
+        2.5,
+        2.5,
+        2.5,
+    )
+
+def test_ignores_annual_leave_days():
+    text = "annual Paid Leaves for 30-45 days; tax Free Salary"
+    assert parse_salary_lpa(text) is None
+
+
+def test_ignores_half_yearly_increment_text():
+    text = "5 day's working, half yearly increments, Friendly Culture"
+    assert parse_salary_lpa(text) is None
