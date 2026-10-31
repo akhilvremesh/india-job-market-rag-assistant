@@ -12,3 +12,4 @@ spacy
 xgboost==3.2.0
 shap==0.51.0
 joblib
+pypdf

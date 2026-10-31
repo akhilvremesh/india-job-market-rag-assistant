@@ -64,3 +64,7 @@ The current technical-skill table contains 15,267 job-skill rows across
 7,596 postings and 26 recognized skill names. It only includes skills in the
 curated matcher list, so a posting missing from this table may still mention
 other technical skills.
+
+## Resume matcher
+
+The resume matcher extracts selectable text from a PDF, ranks historical job postings by TF-IDF cosine similarity, and lists recognized technical skills that appear in a posting but not in the resume.
