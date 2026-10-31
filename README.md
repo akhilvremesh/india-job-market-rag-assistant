@@ -68,3 +68,10 @@ other technical skills.
 ## Resume matcher
 
 The resume matcher extracts selectable text from a PDF, ranks historical job postings by TF-IDF cosine similarity, and lists recognized technical skills that appear in a posting but not in the resume.
+
+## FastAPI backend
+
+Start the local API from the project root:
+
+```powershell
+python -m uvicorn app.main:app --reload
