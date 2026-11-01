@@ -75,3 +75,10 @@ Start the local API from the project root:
 
 ```powershell
 python -m uvicorn app.main:app --reload
+
+## Streamlit frontend
+
+Start FastAPI in one terminal:
+
+```powershell
+python -m uvicorn app.main:app --reload

@@ -16,3 +16,5 @@ pypdf
 fastapi
 uvicorn
 python-multipart
+streamlit
+requests

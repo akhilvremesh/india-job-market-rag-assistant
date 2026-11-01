@@ -1,19 +1,22 @@
-from pathlib import Path
-from io import BytesIO
-
-from fastapi import File, HTTPException, UploadFile
-from pypdf import PdfReader
 import sqlite3
-from src.resume_matcher import match_resume_to_jobs
+from io import BytesIO
+from pathlib import Path
+
 import joblib
 import pandas as pd
-from fastapi import FastAPI
+from fastapi import FastAPI, File, HTTPException, UploadFile
 from pydantic import BaseModel, Field
+from pypdf import PdfReader
+
+from src.resume_matcher import match_resume_to_jobs
 
 
-# Locate and load the saved salary model from the project folder.
+# Locate the project files relative to this file.
 project_root = Path(__file__).resolve().parent.parent
+database_path = project_root / "data" / "jobs.db"
 model_path = project_root / "models" / "salary_xgb_pipeline.joblib"
+
+# Load the saved salary prediction pipeline once when the API starts.
 salary_model = joblib.load(model_path)
 
 app = FastAPI(
@@ -24,7 +27,7 @@ app = FastAPI(
 
 
 class SalaryPredictionRequest(BaseModel):
-    """Validated job details sent to the salary prediction endpoint."""
+    """Validate job details sent to the salary prediction endpoint."""
 
     job_title: str = Field(min_length=1, examples=["Python Data Analyst"])
     key_skills: str = Field(default="", examples=["Python, SQL, pandas"])
@@ -44,8 +47,7 @@ def health_check():
 
 @app.post("/predict/salary")
 def predict_salary(request: SalaryPredictionRequest):
-    """Predict the historical listed salary midpoint in LPA."""
-    # Build one row using the same feature names expected by the trained pipeline.
+    """Predict a historical listed salary midpoint in LPA."""
     input_row = pd.DataFrame(
         [
             {
@@ -67,19 +69,28 @@ def predict_salary(request: SalaryPredictionRequest):
 
     return {
         "predicted_salary_lpa": round(predicted_salary, 2),
-        "note": "Estimate from historical 2019 listed salaries; not a current offer guarantee.",
+        "note": (
+            "Estimate from historical 2019 listed salaries; "
+            "not a current offer guarantee."
+        ),
     }
+
+
 @app.post("/match/resume")
 async def match_resume(file: UploadFile = File(...)):
-    """Rank job postings against an uploaded PDF resume."""
-    # Accept PDF uploads only.
+    """Rank historical postings against an uploaded PDF resume."""
     if not file.filename or not file.filename.lower().endswith(".pdf"):
-        raise HTTPException(status_code=400, detail="Please upload a PDF file.")
+        raise HTTPException(
+            status_code=400,
+            detail="Please upload a PDF file.",
+        )
 
-    # Read the uploaded PDF in memory; it is not saved to disk.
     pdf_bytes = await file.read()
     if not pdf_bytes:
-        raise HTTPException(status_code=400, detail="The uploaded file is empty.")
+        raise HTTPException(
+            status_code=400,
+            detail="The uploaded file is empty.",
+        )
 
     try:
         reader = PdfReader(BytesIO(pdf_bytes))
@@ -99,8 +110,7 @@ async def match_resume(file: UploadFile = File(...)):
             detail="No selectable text was found in the PDF. Scanned resumes need OCR.",
         )
 
-    # Read searchable postings from the project SQLite database.
-    with sqlite3.connect(project_root / "data" / "jobs.db") as connection:
+    with sqlite3.connect(database_path) as connection:
         jobs = pd.read_sql_query(
             """
             SELECT
@@ -116,7 +126,6 @@ async def match_resume(file: UploadFile = File(...)):
 
     matches = match_resume_to_jobs(resume_text, jobs, top_n=5)
 
-    # Convert pandas rows into JSON-friendly dictionaries.
     return {
         "matches": [
             {
@@ -131,3 +140,141 @@ async def match_resume(file: UploadFile = File(...)):
         ],
         "note": "Similarity measures text overlap; it is not a hiring probability.",
     }
+
+
+@app.get("/dashboard/summary")
+def dashboard_summary():
+    """Return posting and salary summaries for the dashboard."""
+    with sqlite3.connect(database_path) as connection:
+        total_postings = pd.read_sql_query(
+            "SELECT COUNT(*) AS count FROM job_postings_clean",
+            connection,
+        )["count"].iloc[0]
+
+        salary_data = pd.read_sql_query(
+            """
+            SELECT salary_mid_lpa
+            FROM job_postings_clean
+            WHERE salary_mid_lpa IS NOT NULL
+            """,
+            connection,
+        )["salary_mid_lpa"]
+
+        top_locations = pd.read_sql_query(
+            """
+            SELECT Location AS location, COUNT(*) AS posting_count
+            FROM job_postings_clean
+            WHERE Location IS NOT NULL AND TRIM(Location) != ''
+            GROUP BY Location
+            ORDER BY posting_count DESC
+            LIMIT 10
+            """,
+            connection,
+        )
+
+    return {
+        "total_postings": int(total_postings),
+        "postings_with_salary": int(salary_data.count()),
+        "mean_salary_lpa": (
+            round(float(salary_data.mean()), 2)
+            if not salary_data.empty
+            else None
+        ),
+        "median_salary_lpa": (
+            round(float(salary_data.median()), 2)
+            if not salary_data.empty
+            else None
+        ),
+        "top_locations": top_locations.to_dict(orient="records"),
+    }
+
+@app.get("/dashboard/skills")
+def dashboard_skills(role: str | None = None, location: str | None = None):
+    """Return the most requested technical skills, optionally filtered by role and city."""
+    query = """
+        SELECT
+            skills.skill,
+            COUNT(DISTINCT skills.job_id) AS posting_count
+        FROM job_technical_skills AS skills
+        JOIN job_postings_clean AS jobs
+            ON jobs."Uniq Id" = skills.job_id
+        WHERE 1 = 1
+    """
+    parameters = []
+
+    # Add filters only when the caller provides them.
+    if role:
+        query += ' AND jobs."Role" = ?'
+        parameters.append(role)
+
+    if location:
+        query += ' AND jobs."Location" LIKE ?'
+        parameters.append(f"%{location}%")
+
+    query += """
+        GROUP BY skills.skill
+        ORDER BY posting_count DESC
+        LIMIT 15
+    """
+
+    with sqlite3.connect(database_path) as connection:
+        skills = pd.read_sql_query(query, connection, params=parameters)
+
+    return {
+        "role": role,
+        "location": location,
+        "skills": skills.to_dict(orient="records"),
+    }
+
+@app.get("/dashboard/salary-by-experience")
+def salary_by_experience():
+    """Return listed salary summaries grouped by experience band."""
+    import re
+
+    with sqlite3.connect(database_path) as connection:
+        rows = pd.read_sql_query(
+            """
+            SELECT
+                "Job Experience Required" AS experience,
+                salary_mid_lpa
+            FROM job_postings_clean
+            WHERE salary_mid_lpa IS NOT NULL
+              AND "Job Experience Required" IS NOT NULL
+            """,
+            connection,
+        )
+
+    def experience_midpoint(value):
+        numbers = re.findall(r"\d+(?:\.\d+)?", str(value))
+        if not numbers:
+            return None
+
+        values = [float(number) for number in numbers[:2]]
+        return sum(values) / len(values)
+
+    rows["experience_mid_years"] = rows["experience"].map(experience_midpoint)
+    rows = rows.dropna(subset=["experience_mid_years"])
+
+    def experience_band(years):
+        if years <= 2:
+            return "Up to 2"
+        if years <= 5:
+            return "Over 2 to 5"
+        if years <= 10:
+            return "Over 5 to 10"
+        return "Over 10"
+
+    rows["experience_band"] = rows["experience_mid_years"].map(experience_band)
+
+    summary = (
+        rows.groupby("experience_band")["salary_mid_lpa"]
+        .agg(posting_count="count", median_salary_lpa="median", mean_salary_lpa="mean")
+        .reindex(["Up to 2", "Over 2 to 5", "Over 5 to 10", "Over 10"])
+        .dropna()
+        .reset_index()
+    )
+
+    summary["median_salary_lpa"] = summary["median_salary_lpa"].round(2)
+    summary["mean_salary_lpa"] = summary["mean_salary_lpa"].round(2)
+
+    return {"salary_by_experience": summary.to_dict(orient="records")}
