@@ -9,7 +9,10 @@ st.set_page_config(
     layout="wide",
 )
 
-API_URL = "http://127.0.0.1:8000"
+try:
+    API_URL = st.secrets["API_URL"]
+except (KeyError, FileNotFoundError):
+    API_URL = os.getenv("API_URL", "http://127.0.0.1:8000")
 
 st.title("Job Market Intelligence Platform")
 st.write(
