@@ -82,3 +82,31 @@ Start FastAPI in one terminal:
 
 ```powershell
 python -m uvicorn app.main:app --reload
+
+## Live demo
+
+[Open the deployed app](https://india-job-market-rag-assistant-e46fcth5oubgabkxb6appvw.streamlit.app/)
+
+## Screenshots
+
+### Dashboard
+
+![Job market dashboard](docs/screenshots/dashboard.png)
+
+### Salary predictor
+
+![Salary prediction example](docs/screenshots/salary-predictor.png)
+
+### Resume matcher
+
+![Resume matching results](docs/screenshots/resume-matcher.png)
+
+## Architecture
+
+```mermaid
+flowchart LR
+    U[User] --> S[Streamlit frontend]
+    S -->|HTTP requests| A[FastAPI backend]
+    A --> M[XGBoost salary model]
+    A --> D[(SQLite job database)]
+    A --> R[PDF text extraction and TF-IDF matching]
